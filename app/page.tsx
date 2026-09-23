@@ -111,10 +111,10 @@ const EXTENDED_CATALOG: Record<string, any> = {
 };
 
 export default function App() {
-  const [searchQuery, setSearchQuery] = useState('2968441-46-3');
-  const [activeQuery, setActiveQuery] = useState('2968441-46-3');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeQuery, setActiveQuery] = useState('');
   const [chemicalData, setChemicalData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resolverSource, setResolverSource] = useState<'pubchem' | 'nih_cir' | 'vendor'>('pubchem');
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -185,6 +185,12 @@ export default function App() {
   };
 
   const fetchChemical = useCallback(async (queryTerm: string) => {
+    if (!queryTerm.trim()) {
+      setChemicalData(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     const cleanQuery = sanitizeQuery(queryTerm);
@@ -274,7 +280,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchChemical(activeQuery);
+    if (activeQuery) {
+      fetchChemical(activeQuery);
+    }
   }, [activeQuery, fetchChemical]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -302,9 +310,9 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.2 Complete</span>
+                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.3 Clean Load</span>
               </h1>
-              <p className="text-xs text-slate-400 hidden sm:block">PubChem + NIH CIR + Vendor Building Block & Pathway Engine</p>
+              <p className="text-xs text-slate-400 hidden sm:block">PubChem + NIH CIR + Vendor Building Block Engine</p>
             </div>
           </div>
 
@@ -337,7 +345,7 @@ export default function App() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Enter CAS (e.g., 2968441-46-3, 64-19-7) or Chemical Name..."
+                placeholder="Enter CAS Registry No. or Chemical Name..."
                 className={`w-full pl-12 pr-32 py-4 rounded-2xl text-sm font-medium border transition-all duration-200 shadow-xl focus:outline-none focus:ring-2 ${
                   themeMode === 'dark'
                     ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:ring-indigo-500'
@@ -387,6 +395,19 @@ export default function App() {
               <span>{error}</span>
             </div>
             <button onClick={() => setError(null)} className="underline hover:text-white">Dismiss</button>
+          </div>
+        )}
+
+        {/* Default Landing View (When no query has been made yet) */}
+        {!activeQuery && !loading && (
+          <div className="py-20 text-center space-y-4 max-w-xl mx-auto">
+            <div className="inline-block p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+              <FlaskConical className="w-10 h-10" />
+            </div>
+            <h2 className="text-xl font-bold">Search any CAS or Compound</h2>
+            <p className="text-xs text-slate-400">
+              Enter a CAS number or chemical name above to look up structures, SMILES, IUPAC identifiers, and reaction pathways.
+            </p>
           </div>
         )}
 
