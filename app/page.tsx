@@ -1,31 +1,24 @@
 "use client";
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
   FlaskConical, 
   ArrowRight, 
   ArrowDown, 
-  ArrowUp, 
   Layers, 
   Copy, 
   Check, 
-  ExternalLink, 
   Info, 
   RefreshCw, 
-  BookOpen, 
-  Download, 
-  Sparkles, 
   ChevronDown, 
   ChevronUp, 
   Atom, 
   ShieldCheck, 
-  FileText,
-  Dna,
   Zap
 } from 'lucide-react';
 
 // Offline/Fallback Database with rich mapped pathways for reliability
-const PRESET_DATABASE = {
+const PRESET_DATABASE: Record<string, any> = {
   // Acetic Acid
   '64-19-7': {
     cid: '176',
@@ -152,26 +145,26 @@ const PRESET_DATABASE = {
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('64-19-7');
   const [activeQuery, setActiveQuery] = useState('64-19-7');
-  const [chemicalData, setChemicalData] = useState(null);
+  const [chemicalData, setChemicalData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [isLiveApi, setIsLiveApi] = useState(false);
-  const [copiedField, setCopiedField] = useState(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showSynonymsModal, setShowSynonymsModal] = useState(false);
-  const [searchHistory, setSearchHistory] = useState(['64-19-7', '50-78-2', '103-90-2']);
+  const [, setSearchHistory] = useState(['64-19-7', '50-78-2', '103-90-2']);
   const [themeMode, setThemeMode] = useState('dark');
 
   // Clean text / format CAS detection
-  const isCasNumber = (str) => /^\d{2,7}-\d{2}-\d$/.test(str.trim());
+  const isCasNumber = (str: string) => /^\d{2,7}-\d{2}-\d$/.test(str.trim());
 
   // Copy to clipboard helper
-  const copyToClipboard = (text, field) => {
+  const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const fetchChemical = useCallback(async (queryTerm) => {
+  const fetchChemical = useCallback(async (queryTerm: string) => {
     setLoading(true);
     setError(null);
     const cleanQuery = queryTerm.trim();
@@ -180,12 +173,12 @@ export default function App() {
     const presetKey = Object.keys(PRESET_DATABASE).find(
       key => key.toLowerCase() === cleanQuery.toLowerCase() || 
              PRESET_DATABASE[key].name.toLowerCase() === cleanQuery.toLowerCase() ||
-             PRESET_DATABASE[key].synonyms.some(s => s.toLowerCase() === cleanQuery.toLowerCase())
+             PRESET_DATABASE[key].synonyms.some((s: string) => s.toLowerCase() === cleanQuery.toLowerCase())
     );
 
     try {
       // Step 1: Fetch CID from PubChem REST API
-      const searchType = isCasNumber(cleanQuery) ? 'name' : 'name';
+      const searchType = 'name';
       const cidUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/${searchType}/${encodeURIComponent(cleanQuery)}/cids/JSON`;
       
       const cidRes = await fetch(cidUrl);
@@ -211,7 +204,7 @@ export default function App() {
       const synonymsList = synData.InformationList?.Information[0]?.Synonym || [];
 
       // Extract CAS number from synonyms
-      const extractedCas = synonymsList.find(s => /^\d{2,7}-\d{2}-\d$/.test(s)) || (isCasNumber(cleanQuery) ? cleanQuery : 'Available via PubChem');
+      const extractedCas = synonymsList.find((s: string) => /^\d{2,7}-\d{2}-\d$/.test(s)) || (isCasNumber(cleanQuery) ? cleanQuery : 'Available via PubChem');
 
       // Check if we have mapped reactions in preset, otherwise create dynamic references
       const matchedPreset = PRESET_DATABASE[extractedCas] || (presetKey ? PRESET_DATABASE[presetKey] : null);
@@ -243,13 +236,13 @@ export default function App() {
       console.warn("Live API lookup failed or compound restricted. Falling back to internal chemical library.", err);
       
       // Fallback to Preset DB if API network fails or compound missing
-      if (matchedPreset) {
+      if (presetKey) {
         setChemicalData(PRESET_DATABASE[presetKey]);
         setIsLiveApi(false);
       } else {
-        // Fallback default acetic acid
-        setError(`Unable to locate compound "${cleanQuery}". Showing default sample compound.`);
-        setChemicalData(PRESET_DATABASE['64-19-7']);
+        // Clear previous chemical result on failed search
+        setChemicalData(null);
+        setError(`Unable to locate compound "${cleanQuery}". No chemical found for this search term.`);
         setIsLiveApi(false);
       }
     } finally {
@@ -261,26 +254,14 @@ export default function App() {
     fetchChemical(activeQuery);
   }, [activeQuery, fetchChemical]);
 
-  const handleSearch = async (searchTerm: string) => {
-  // ... existing setup ...
-  
-  try {
-    const data = await fetchChemicalData(searchTerm);
-    if (data) {
-      setSelectedChemical(data);
-    } else {
-      // Clear the previous result if no chemical is found
-      setSelectedChemical(null);
-      setError("No chemical found for this CAS number or product name.");
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      setActiveQuery(searchQuery.trim());
     }
-  } catch (err) {
-    // Clear the previous result on API or network error
-    setSelectedChemical(null);
-    setError("Failed to fetch chemical data. Please try again.");
-  }
-};
+  };
 
-  const navigateToChemical = (targetTerm) => {
+  const navigateToChemical = (targetTerm: string) => {
     setSearchQuery(targetTerm);
     setActiveQuery(targetTerm);
   };
@@ -330,7 +311,6 @@ export default function App() {
       {/* Main Content Layout */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {}
         <section className="space-y-4">
           <div className="max-w-3xl mx-auto">
             <form onSubmit={handleSearchSubmit} className="relative flex items-center">
@@ -410,7 +390,6 @@ export default function App() {
           </div>
         ) : chemicalData ? (
           <>
-            {}
             <section className={`p-6 sm:p-8 rounded-3xl border shadow-2xl relative overflow-hidden transition-all ${
               themeMode === 'dark' ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
             }`}>
@@ -434,7 +413,7 @@ export default function App() {
                       src={`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${chemicalData.cid}/PNG?record_type=2d&image_size=300x300`}
                       alt={`Chemical structure for ${chemicalData.name}`}
                       className="w-full h-full object-contain filter drop-shadow-md group-hover:scale-105 transition-transform duration-300"
-                      onError={(e) => {
+                      onError={(e: any) => {
                         e.target.onerror = null;
                         e.target.src = 'https://via.placeholder.com/300?text=Structure+Unavailable';
                       }}
@@ -535,7 +514,7 @@ export default function App() {
                     </div>
 
                     <div className="flex flex-wrap gap-1.5">
-                      {(showSynonymsModal ? chemicalData.synonyms : chemicalData.synonyms.slice(0, 7)).map((syn, idx) => (
+                      {(showSynonymsModal ? chemicalData.synonyms : chemicalData.synonyms.slice(0, 7)).map((syn: string, idx: number) => (
                         <span
                           key={idx}
                           className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
@@ -554,7 +533,6 @@ export default function App() {
               </div>
             </section>
 
-            {}
             <section className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
                 <div>
@@ -587,7 +565,7 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {chemicalData.previous.map((item, index) => (
+                    {chemicalData.previous.map((item: any, index: number) => (
                       <div
                         key={index}
                         onClick={() => navigateToChemical(item.cas !== 'N/A' ? item.cas : item.name)}
@@ -703,7 +681,7 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {chemicalData.next.map((item, index) => (
+                    {chemicalData.next.map((item: any, index: number) => (
                       <div
                         key={index}
                         onClick={() => navigateToChemical(item.cas !== 'N/A' ? item.cas : item.name)}
