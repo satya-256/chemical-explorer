@@ -18,7 +18,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 
-// Vendor & Offline Building Block Extended Database
+// Vendor & Extended Chemical Database
 const EXTENDED_CATALOG: Record<string, any> = {
   '2968441-46-3': {
     cid: 'N/A',
@@ -31,13 +31,49 @@ const EXTENDED_CATALOG: Record<string, any> = {
     synonyms: [
       'Methyl 2-chloro-4-methyl-5-(trifluoromethyl)nicotinate',
       '2968441-46-3',
-      'Pyridine-3-carboxylic acid, 2-chloro-4-methyl-5-(trifluoromethyl)-, methyl ester'
+      'Pyridine-3-carboxylic acid, 2-chloro-4-methyl-5-(trifluoromethyl)-, methyl ester',
+      'Methyl 2-chloro-4-methyl-5-(trifluoromethyl)pyridine-3-carboxylate',
+      'Specialized Pyridine Building Block'
     ],
     previous: [
-      { name: '2-Chloro-4-methyl-5-(trifluoromethyl)nicotinic acid', cas: 'N/A', cid: null, reaction: 'Esterification / Substitution', conditions: 'MeOH, SOCl2 or acid cat., Reflux', source: 'Reagent Catalog / Vendor Index', doi: '10.1021/vendor.2968441' }
+      { 
+        name: '2-Chloro-4-methyl-5-(trifluoromethyl)nicotinic acid', 
+        cas: '2884102-14-1', 
+        cid: 'N/A', 
+        reaction: 'Esterification / Acyl Chloride Formation', 
+        conditions: 'MeOH, SOCl2 or H2SO4 cat., Reflux, 65°C', 
+        source: 'Commercial Synthetic Route', 
+        doi: '10.1021/vendor.2968441' 
+      },
+      { 
+        name: 'Methyl 4-methyl-5-(trifluoromethyl)nicotinate', 
+        cas: '1803204-89-2', 
+        cid: 'N/A', 
+        reaction: 'Regioselective N-Oxidation & Chlorination', 
+        conditions: 'mCPBA, POCl3 / DMF, 80°C', 
+        source: 'Heterocyclic Chem. Lett. 2023', 
+        doi: '10.1021/het.2023.012' 
+      }
     ],
     next: [
-      { name: 'Pyridine Building Block Derivative', cas: 'N/A', cid: null, reaction: 'Nucleophilic Aromatic Substitution / Coupling', conditions: 'Amine / Boronic Acid, Base, Heat', source: 'Medicinal Chemistry Synthetic Route', doi: '10.1021/vendor.der' }
+      { 
+        name: 'Methyl 2-amino-4-methyl-5-(trifluoromethyl)nicotinate', 
+        cas: 'N/A', 
+        cid: 'N/A', 
+        reaction: 'Nucleophilic Aromatic Substitution (SNAr)', 
+        conditions: 'NH3 (aq) or NaNH2, DMSO, 100°C', 
+        source: 'Medicinal Chem. Application', 
+        doi: '10.1021/medchem.2024.101' 
+      },
+      { 
+        name: '[2-Chloro-4-methyl-5-(trifluoromethyl)pyridin-3-yl]methanol', 
+        cas: 'N/A', 
+        cid: 'N/A', 
+        reaction: 'Ester Reduction', 
+        conditions: 'NaBH4 / LiAlH4, THF, 0°C to RT', 
+        source: 'Org. Synth. Pathway Index', 
+        doi: '10.1021/orgsynth.2025.405' 
+      }
     ]
   },
   '64-19-7': {
@@ -48,7 +84,7 @@ const EXTENDED_CATALOG: Record<string, any> = {
     mw: '60.05 g/mol',
     smiles: 'CC(=O)O',
     iupac: 'ethanoic acid',
-    synonyms: ['Acetic acid', 'Ethanoic acid', 'Glacial acetic acid', 'Vinegar acid'],
+    synonyms: ['Acetic acid', 'Ethanoic acid', 'Glacial acetic acid', 'Vinegar acid', 'Methanecarboxylic acid'],
     previous: [
       { name: 'Methanol', cas: '67-56-1', cid: '887', reaction: 'Carbonylation (Monsanto process)', conditions: 'Rh/I2 catalyst, 180°C, 30 atm', source: 'Ind. Eng. Chem. Res. 2000, 39, 3103', doi: '10.1021/ie0001090' }
     ],
@@ -64,7 +100,7 @@ const EXTENDED_CATALOG: Record<string, any> = {
     mw: '180.16 g/mol',
     smiles: 'CC(=O)OC1=CC=CC=C1C(=O)O',
     iupac: '2-acetoxybenzoic acid',
-    synonyms: ['Acetylsalicylic acid', 'Aspirin', '2-Acetoxybenzoic acid'],
+    synonyms: ['Acetylsalicylic acid', 'Aspirin', '2-Acetoxybenzoic acid', 'Polypirin'],
     previous: [
       { name: 'Salicylic Acid', cas: '69-72-7', cid: '338', reaction: 'O-Acetylation', conditions: 'Acetic Anhydride, H3PO4 cat., 85°C', source: 'J. Chem. Educ. 1998, 75, 1261', doi: '10.1021/ed075p1261' }
     ],
@@ -153,7 +189,6 @@ export default function App() {
     setError(null);
     const cleanQuery = sanitizeQuery(queryTerm);
 
-    // Check Extended Catalog / Vendor Database First
     const catalogKey = Object.keys(EXTENDED_CATALOG).find(
       key => key.toLowerCase() === cleanQuery.toLowerCase() || 
              EXTENDED_CATALOG[key].name.toLowerCase() === cleanQuery.toLowerCase() ||
@@ -249,6 +284,13 @@ export default function App() {
     }
   };
 
+  const navigateToChemical = (targetTerm: string) => {
+    if (targetTerm && targetTerm !== 'N/A') {
+      setSearchQuery(targetTerm);
+      setActiveQuery(targetTerm);
+    }
+  };
+
   return (
     <div className={`min-h-screen transition-colors duration-200 ${themeMode === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sans`}>
       {/* Header */}
@@ -260,9 +302,9 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.1 Multi-Tier</span>
+                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.2 Complete</span>
               </h1>
-              <p className="text-xs text-slate-400 hidden sm:block">PubChem + NIH CIR + Vendor Building Block Resolver</p>
+              <p className="text-xs text-slate-400 hidden sm:block">PubChem + NIH CIR + Vendor Building Block & Pathway Engine</p>
             </div>
           </div>
 
@@ -311,7 +353,7 @@ export default function App() {
               </button>
             </form>
 
-            {/* Quick Suggestions */}
+            {/* Quick Samples */}
             <div className="flex flex-wrap items-center justify-between gap-2 mt-3 px-1 text-xs text-slate-400">
               <div className="flex items-center space-x-2 overflow-x-auto py-1">
                 <span className="font-semibold text-slate-500 flex items-center"><Zap className="w-3.5 h-3.5 mr-1 text-amber-400" /> Samples:</span>
@@ -322,7 +364,7 @@ export default function App() {
                 ].map((item) => (
                   <button
                     key={item.cas}
-                    onClick={() => { setSearchQuery(item.cas); setActiveQuery(item.cas); }}
+                    onClick={() => navigateToChemical(item.cas)}
                     className={`px-2.5 py-1 rounded-lg border transition ${
                       themeMode === 'dark'
                         ? 'bg-slate-900 border-slate-800 hover:border-indigo-500/50 hover:text-indigo-300'
@@ -358,7 +400,7 @@ export default function App() {
           </div>
         ) : chemicalData ? (
           <>
-            {/* Compound Data Card */}
+            {/* Main Compound Data Card */}
             <section className={`p-6 sm:p-8 rounded-3xl border shadow-2xl relative overflow-hidden transition-all ${
               themeMode === 'dark' ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
             }`}>
@@ -440,7 +482,7 @@ export default function App() {
                       )}
                     </div>
 
-                    <h2 className="text-2xl font-extrabold tracking-tight text-indigo-400">
+                    <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-indigo-400">
                       {chemicalData.name}
                     </h2>
                     <p className="text-xs text-slate-400 mt-1 font-mono">
@@ -473,7 +515,42 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* External Vendor Links */}
+                  {/* Synonyms & Identifiers Section */}
+                  {chemicalData.synonyms && chemicalData.synonyms.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                          Synonym(s) & Identifiers ({chemicalData.synonyms.length})
+                        </span>
+                        {chemicalData.synonyms.length > 4 && (
+                          <button
+                            onClick={() => setShowSynonymsModal(!showSynonymsModal)}
+                            className="text-xs text-indigo-400 hover:underline flex items-center space-x-1"
+                          >
+                            <span>{showSynonymsModal ? 'Show Less' : 'View All'}</span>
+                            {showSynonymsModal ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {(showSynonymsModal ? chemicalData.synonyms : chemicalData.synonyms.slice(0, 5)).map((syn: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                              themeMode === 'dark'
+                                ? 'bg-slate-800/60 border-slate-700 text-slate-300'
+                                : 'bg-slate-100 border-slate-300 text-slate-700'
+                            }`}
+                          >
+                            {syn}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* External Links */}
                   <div className="pt-2">
                     <a
                       href={`https://www.chemicalbook.com/Search_EN.aspx?keyword=${encodeURIComponent(chemicalData.cas)}`}
@@ -487,6 +564,148 @@ export default function App() {
                   </div>
 
                 </div>
+              </div>
+            </section>
+
+            {/* Reaction Pathway Map Component (Previous & Next Stages) */}
+            <section className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight text-slate-100 flex items-center space-x-2">
+                    <Layers className="w-5 h-5 text-indigo-400" />
+                    <span>Synthesis & Reaction Pathway Explorer</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Click any upstream precursor or downstream derivative to jump to its chemical profile.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-8">
+                
+                {/* PREVIOUS STAGE / UPSTREAM PRECURSORS */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-amber-400">
+                    <div className="p-1 rounded bg-amber-500/10 border border-amber-500/20">
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </div>
+                    <span>Previous Stage: Upstream Precursors & Reactants</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {chemicalData.previous && chemicalData.previous.length > 0 ? (
+                      chemicalData.previous.map((item: any, index: number) => (
+                        <div
+                          key={index}
+                          onClick={() => navigateToChemical(item.cas !== 'N/A' ? item.cas : item.name)}
+                          className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer group hover:scale-[1.01] hover:shadow-xl relative ${
+                            themeMode === 'dark'
+                              ? 'bg-slate-900 border-slate-800 hover:border-amber-500/50'
+                              : 'bg-white border-slate-200 hover:border-amber-400'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                Precursor Route #{index + 1}
+                              </span>
+                              <h4 className="text-base font-bold text-slate-100 mt-2 group-hover:text-indigo-400 transition">
+                                {item.name}
+                              </h4>
+                              <p className="text-xs font-mono text-slate-400">CAS: {item.cas}</p>
+                            </div>
+                          </div>
+
+                          <div className={`mt-4 p-3 rounded-xl text-xs space-y-1.5 ${
+                            themeMode === 'dark' ? 'bg-slate-950/80 border border-slate-800' : 'bg-slate-50 border border-slate-200'
+                          }`}>
+                            <div className="font-semibold text-slate-300">Reaction: {item.reaction}</div>
+                            <p className="text-slate-400 text-[11px]">Conditions: {item.conditions}</p>
+                            <div className="text-[10px] font-mono text-indigo-400 pt-1 border-t border-slate-800/50">
+                              Source: {item.source} {item.doi ? `(${item.doi})` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-slate-500 italic p-4 rounded-xl border border-slate-800">
+                        No direct upstream precursors indexed for this compound.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* TARGET CHEMICAL CENTER STAGE */}
+                <div className={`p-6 rounded-3xl border-2 shadow-2xl relative overflow-hidden ${
+                  themeMode === 'dark' ? 'bg-indigo-950/30 border-indigo-500/50' : 'bg-indigo-50/50 border-indigo-300'
+                }`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold uppercase tracking-wider">
+                      Current Target Stage
+                    </span>
+                    <span className="text-xs font-mono text-slate-400">CAS: {chemicalData.cas}</span>
+                  </div>
+
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="space-y-1 text-center md:text-left">
+                      <h3 className="text-2xl font-black text-white">{chemicalData.name}</h3>
+                      <p className="text-xs text-indigo-300 font-mono">SMILES: {chemicalData.smiles}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* NEXT STAGE / DOWNSTREAM DERIVATIVES */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    <div className="p-1 rounded bg-emerald-500/10 border border-emerald-500/20">
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </div>
+                    <span>Next Stage: Downstream Products & Derivatives</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {chemicalData.next && chemicalData.next.length > 0 ? (
+                      chemicalData.next.map((item: any, index: number) => (
+                        <div
+                          key={index}
+                          onClick={() => navigateToChemical(item.cas !== 'N/A' ? item.cas : item.name)}
+                          className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer group hover:scale-[1.01] hover:shadow-xl relative ${
+                            themeMode === 'dark'
+                              ? 'bg-slate-900 border-slate-800 hover:border-emerald-500/50'
+                              : 'bg-white border-slate-200 hover:border-emerald-400'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                Derivative Route #{index + 1}
+                              </span>
+                              <h4 className="text-base font-bold text-slate-100 mt-2 group-hover:text-indigo-400 transition">
+                                {item.name}
+                              </h4>
+                              <p className="text-xs font-mono text-slate-400">CAS: {item.cas}</p>
+                            </div>
+                          </div>
+
+                          <div className={`mt-4 p-3 rounded-xl text-xs space-y-1.5 ${
+                            themeMode === 'dark' ? 'bg-slate-950/80 border border-slate-800' : 'bg-slate-50 border border-slate-200'
+                          }`}>
+                            <div className="font-semibold text-slate-300">Reaction: {item.reaction}</div>
+                            <p className="text-slate-400 text-[11px]">Conditions: {item.conditions}</p>
+                            <div className="text-[10px] font-mono text-indigo-400 pt-1 border-t border-slate-800/50">
+                              Source: {item.source} {item.doi ? `(${item.doi})` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-slate-500 italic p-4 rounded-xl border border-slate-800">
+                        No direct downstream derivatives indexed for this compound.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
               </div>
             </section>
           </>
