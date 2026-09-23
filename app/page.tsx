@@ -261,11 +261,24 @@ export default function App() {
     fetchChemical(activeQuery);
   }, [activeQuery, fetchChemical]);
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    setActiveQuery(searchQuery.trim());
-  };
+  const handleSearch = async (searchTerm: string) => {
+  // ... existing setup ...
+  
+  try {
+    const data = await fetchChemicalData(searchTerm);
+    if (data) {
+      setSelectedChemical(data);
+    } else {
+      // Clear the previous result if no chemical is found
+      setSelectedChemical(null);
+      setError("No chemical found for this CAS number or product name.");
+    }
+  } catch (err) {
+    // Clear the previous result on API or network error
+    setSelectedChemical(null);
+    setError("Failed to fetch chemical data. Please try again.");
+  }
+};
 
   const navigateToChemical = (targetTerm) => {
     setSearchQuery(targetTerm);
