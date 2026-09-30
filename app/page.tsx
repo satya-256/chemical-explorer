@@ -10,115 +10,110 @@ import {
   RefreshCw, 
   Atom, 
   X,
-  ExternalLink
+  ExternalLink,
+  BookOpen,
+  FileText
 } from 'lucide-react';
 
 /**
- * Fully dynamic pathway fetcher with automatic Parent CID resolution for salt/complex forms:
- * 1. Queries target CID in PubChem Transformations API.
- * 2. If empty, resolves the Parent Compound CID (e.g., Rosuvastatin free acid for Rosuvastatin Calcium) and re-fetches pathways.
- * 3. Dynamically adds parent-component structural links with zero hardcoded data.
+ * Multi-tier Dynamic Reaction & Synthesis Fetcher:
+ * 1. Queries PubChem PUG View API (`/pug_view/data/compound/{cid}/JSON?heading=Synthesis`) to extract live synthesis steps, literature references, and patents.
+ * 2. Queries PubChem Parent/Component CIDs to link parent free-acid / salt forms dynamically.
+ * 3. Falls back to generating live target-bound literature & patent deep links if no structured reaction steps are indexed.
  */
-const fetchDynamicTransformations = async (cid: string) => {
-  if (!cid || cid === 'N/A') return { previous: [], next: [] };
+const fetchDynamicTransformations = async (cid: string, compoundName: string, casNumber: string) => {
+  if (!cid || cid === 'N/A') return { previous: [], next: [], synthesisNotes: [] };
 
   const previousRoutes: any[] = [];
   const nextRoutes: any[] = [];
-
-  const parseTransformations = (rows: any[], targetCid: string) => {
-    rows.forEach((row: any) => {
-      const reactantCid = row.ReactantCID?.toString();
-      const productCid = row.ProductCID?.toString();
-      const reactionName = row.TransformationName || 'Chemical Transformation';
-
-      if (productCid === targetCid && reactantCid) {
-        previousRoutes.push({
-          name: `Precursor (CID: ${reactantCid})`,
-          cas: `CID: ${reactantCid}`,
-          cid: reactantCid,
-          reaction: reactionName,
-          conditions: 'PubChem Transformations Registry',
-          source: 'PubChem Index',
-          doi: ''
-        });
-      }
-
-      if (reactantCid === targetCid && productCid) {
-        nextRoutes.push({
-          name: `Derivative (CID: ${productCid})`,
-          cas: `CID: ${productCid}`,
-          cid: productCid,
-          reaction: reactionName,
-          conditions: 'PubChem Transformations Registry',
-          source: 'PubChem Index',
-          doi: ''
-        });
-      }
-    });
-  };
+  const synthesisNotes: any[] = [];
 
   try {
-    // 1. Direct transformation lookup for current CID
-    const transformRes = await fetch(
-      `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/transformations/JSON`
+    // 1. Query PubChem PUG View API specifically for "Synthesis" record headings
+    const synthesisUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=Synthesis`;
+    const synthRes = await fetch(synthesisUrl);
+
+    if (synthRes.ok) {
+      const synthData = await synthRes.json();
+      const sections = synthData.Record?.Section || [];
+
+      // Recursive function to extract synthesis text paragraphs & patent/paper citations
+      const extractSynthesisData = (secList: any[]) => {
+        secList.forEach((sec: any) => {
+          if (sec.TOCHeading === 'Synthesis' || sec.TOCHeading === 'Methods of Manufacturing') {
+            const information = sec.Information || [];
+            information.forEach((info: any) => {
+              if (info.Value?.StringWithMarkup) {
+                info.Value.StringWithMarkup.forEach((strObj: any) => {
+                  if (strObj.String) {
+                    synthesisNotes.push({
+                      text: strObj.String,
+                      source: info.ReferenceNumber ? `PubChem Ref #${info.ReferenceNumber}` : 'PubChem Chemical Synthesis Registry'
+                    });
+                  }
+                });
+              }
+            });
+          }
+          if (sec.Section) {
+            extractSynthesisData(sec.Section);
+          }
+        });
+      };
+
+      extractSynthesisData(sections);
+    }
+
+    // Parse extracted synthesis text into structured Precursor cards
+    synthesisNotes.forEach((note, index) => {
+      previousRoutes.push({
+        name: `Published Synthesis Route #${index + 1}`,
+        cas: `Literature Process`,
+        cid: 'N/A',
+        reaction: note.text.length > 180 ? `${note.text.substring(0, 180)}...` : note.text,
+        conditions: 'Extract from PubChem Synthesis Section',
+        source: note.source,
+        link: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}#section=Synthesis`
+      });
+    });
+
+    // 2. Query Parent Compound CIDs to build dynamic Structural / Salt form links
+    const parentRes = await fetch(
+      `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/cids/JSON?cids_type=parent`
     );
 
-    if (transformRes.ok) {
-      const data = await transformRes.json();
-      const rows = data.Transformations?.Row || [];
-      parseTransformations(rows, cid);
-    }
+    if (parentRes.ok) {
+      const parentData = await parentRes.json();
+      const parentCids: number[] = parentData.IdentifierList?.CID || [];
 
-    // 2. If direct lookup returns no results, query Parent/Component CIDs dynamically
-    if (previousRoutes.length === 0 && nextRoutes.length === 0) {
-      const parentRes = await fetch(
-        `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/cids/JSON?cids_type=parent`
-      );
-
-      if (parentRes.ok) {
-        const parentData = await parentRes.json();
-        const parentCids: number[] = parentData.IdentifierList?.CID || [];
-
-        for (const parentCid of parentCids) {
-          const parentCidStr = parentCid.toString();
-          if (parentCidStr !== cid) {
-            // Add Parent form as direct precursor
-            previousRoutes.push({
-              name: `Parent Free Acid Form (CID: ${parentCidStr})`,
-              cas: `CID: ${parentCidStr}`,
-              cid: parentCidStr,
-              reaction: 'Parent Acid / Salt Dissociation Link',
-              conditions: 'PubChem Compound Hierarchy',
-              source: 'PubChem Classification',
-              doi: ''
-            });
-
-            // Fetch transformations registered under the Parent CID
-            const parentTransformRes = await fetch(
-              `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${parentCidStr}/transformations/JSON`
-            );
-
-            if (parentTransformRes.ok) {
-              const parentTransformData = await parentTransformRes.json();
-              const parentRows = parentTransformData.Transformations?.Row || [];
-              parseTransformations(parentRows, parentCidStr);
-            }
-          }
+      parentCids.forEach((parentCid) => {
+        const parentCidStr = parentCid.toString();
+        if (parentCidStr !== cid) {
+          previousRoutes.push({
+            name: `Parent Active Core / Free Acid (CID: ${parentCidStr})`,
+            cas: `CID: ${parentCidStr}`,
+            cid: parentCidStr,
+            reaction: 'Parent Acid / Salt Complex Dissociation',
+            conditions: 'PubChem Structural Hierarchy',
+            source: 'PubChem Classification',
+            link: `https://pubchem.ncbi.nlm.nih.gov/compound/${parentCidStr}`
+          });
         }
-      }
+      });
     }
 
-    // 3. De-duplicate routes by CID
-    const uniquePrevious = Array.from(new Map(previousRoutes.map(item => [item.cid, item])).values());
-    const uniqueNext = Array.from(new Map(nextRoutes.map(item => [item.cid, item])).values());
+    // 3. De-duplicate routes
+    const uniquePrevious = Array.from(new Map(previousRoutes.map(item => [item.name + item.cid, item])).values());
+    const uniqueNext = Array.from(new Map(nextRoutes.map(item => [item.name + item.cid, item])).values());
 
     return {
       previous: uniquePrevious.slice(0, 6),
-      next: uniqueNext.slice(0, 6)
+      next: uniqueNext.slice(0, 6),
+      synthesisNotes
     };
   } catch (err) {
-    console.warn('Dynamic transformation lookup failed:', err);
-    return { previous: [], next: [] };
+    console.warn('Dynamic pathway fetch error:', err);
+    return { previous: [], next: [], synthesisNotes: [] };
   }
 };
 
@@ -206,7 +201,6 @@ export default function App() {
       // 1. Resolve CID via PubChem API
       let cidUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(cleanQuery)}/cids/JSON`;
       
-      // If query is directly a numeric CID
       if (/^\d+$/.test(cleanQuery)) {
         cidUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cleanQuery}/property/Title/JSON`;
       }
@@ -237,13 +231,14 @@ export default function App() {
           const synonymsList = synData.InformationList?.Information?.[0]?.Synonym || [];
 
           const extractedCas = synonymsList.find((s: string) => /^\d{2,7}-\d{2}-\d$/.test(s)) || (isCasNumber(cleanQuery) ? cleanQuery : 'Available via PubChem');
-          
-          // Fetch dynamic transformation reaction pathways
-          const dynamicData = await fetchDynamicTransformations(cid);
+          const compoundTitle = props.Title || cleanQuery;
+
+          // Fetch dynamic transformation & synthesis reaction pathways
+          const dynamicData = await fetchDynamicTransformations(cid, compoundTitle, extractedCas);
 
           setChemicalData({
             cid: cid,
-            name: props.Title || cleanQuery,
+            name: compoundTitle,
             cas: extractedCas,
             formula: props.MolecularFormula || 'N/A',
             mw: props.MolecularWeight ? `${props.MolecularWeight} g/mol` : 'N/A',
@@ -290,11 +285,13 @@ export default function App() {
     }
   };
 
-  const navigateToChemical = (targetTerm: string) => {
-    if (targetTerm && targetTerm !== 'N/A') {
-      const cleanTerm = targetTerm.replace(/^CID:\s*/i, '');
+  const navigateToChemical = (item: any) => {
+    if (item.cid && item.cid !== 'N/A') {
+      const cleanTerm = item.cid.toString().replace(/^CID:\s*/i, '');
       setSearchQuery(cleanTerm);
       setActiveQuery(cleanTerm);
+    } else if (item.link) {
+      window.open(item.link, '_blank');
     }
   };
 
@@ -309,9 +306,9 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.4 Web-Enabled</span>
+                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">Live API</span>
               </h1>
-              <p className="text-xs text-slate-400 hidden sm:block">PubChem + NIH CIR + Live Dynamic API Engine</p>
+              <p className="text-xs text-slate-400 hidden sm:block">PubChem PUG View + NIH CIR Synthesis Engine</p>
             </div>
           </div>
 
@@ -328,7 +325,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Area */}
+      {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Search Bar */}
         <section className="space-y-4">
@@ -384,7 +381,7 @@ export default function App() {
             }`}>
               <div className="flex flex-col lg:flex-row gap-8 items-start">
                 
-                {/* 2D Structure Image */}
+                {/* 2D Structure */}
                 <div className="w-full lg:w-5/12 flex flex-col items-center">
                   <div className={`w-full aspect-square max-w-sm rounded-2xl p-6 border flex flex-col items-center justify-center relative group shadow-inner ${
                     themeMode === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'
@@ -431,7 +428,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Compound Properties */}
+                {/* Compound Meta Details */}
                 <div className="w-full lg:w-7/12 space-y-6">
                   <div>
                     <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-indigo-400">
@@ -459,14 +456,12 @@ export default function App() {
                     </div>
 
                     <div className={`p-4 rounded-2xl border ${themeMode === 'dark' ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">SMILES Notation</div>
-                      <div className="text-xs font-mono text-slate-300 truncate" title={chemicalData.smiles}>
-                        {chemicalData.smiles}
-                      </div>
+                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">PubChem CID</div>
+                      <div className="text-lg font-mono font-bold text-purple-400">{chemicalData.cid}</div>
                     </div>
                   </div>
 
-                  {/* Synonyms Tag List */}
+                  {/* Synonyms */}
                   {chemicalData.synonyms && chemicalData.synonyms.length > 0 && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -509,17 +504,17 @@ export default function App() {
                     Synthesis & Reaction Pathway Explorer
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Click any upstream precursor or downstream derivative to jump directly to its profile.
+                    Live PUG-View literature extraction & structural precursor links.
                   </p>
                 </div>
               </div>
 
               <div className="space-y-8">
-                {/* UPSTREAM PRECURSORS */}
+                {/* UPSTREAM PRECURSORS & SYNTHESIS ROUTES */}
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-amber-400">
                     <ArrowDown className="w-3.5 h-3.5" />
-                    <span>Upstream Precursors & Reactants</span>
+                    <span>Upstream Precursors & Synthesis Methods</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -527,7 +522,7 @@ export default function App() {
                       chemicalData.previous.map((item: any, index: number) => (
                         <div
                           key={index}
-                          onClick={() => navigateToChemical(item.cid)}
+                          onClick={() => navigateToChemical(item)}
                           className={`p-5 rounded-2xl border cursor-pointer hover:border-amber-500/50 transition group ${
                             themeMode === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                           }`}
@@ -540,14 +535,42 @@ export default function App() {
                           </div>
                           <p className="text-xs font-mono text-slate-400 mt-1">{item.cas}</p>
                           <div className="mt-3 p-2.5 rounded-xl bg-slate-950 border border-slate-800/60 text-xs text-slate-300">
-                            <div className="font-semibold text-amber-400/90 mb-0.5">{item.reaction}</div>
-                            <div className="text-slate-400 text-[11px]">{item.conditions}</div>
+                            <div className="font-medium text-slate-300 leading-relaxed">{item.reaction}</div>
+                            <div className="text-amber-400/80 text-[11px] mt-2 font-mono">{item.source}</div>
                           </div>
                         </div>
                       ))
                     ) : (
-                      <div className="col-span-2 p-6 rounded-2xl border border-slate-800/80 bg-slate-900/40 text-center text-xs text-slate-400 italic">
-                        No direct upstream precursors indexed in PubChem for this compound.
+                      <div className="col-span-2 p-6 rounded-2xl border border-slate-800/80 bg-slate-900/60 space-y-4">
+                        <div className="flex items-center space-x-2 text-amber-400 text-xs font-semibold">
+                          <BookOpen className="w-4 h-4" />
+                          <span>No Direct Structured Pathways Mapped in PubChem Graph</span>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          PubChem does not maintain a pre-indexed graph node for <span className="text-indigo-400 font-mono">{chemicalData.name}</span>. You can search the open patent literature and literature index directly below:
+                        </p>
+                        <div className="flex flex-wrap gap-3 pt-1">
+                          {chemicalData.cid !== 'N/A' && (
+                            <a
+                              href={`https://pubchem.ncbi.nlm.nih.gov/compound/${chemicalData.cid}#section=Synthesis`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3.5 py-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 text-xs hover:bg-indigo-600/30 font-medium flex items-center space-x-1.5 transition"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>View PubChem Synthesis Records</span>
+                            </a>
+                          )}
+                          <a
+                            href={`https://patents.google.com/?q=${encodeURIComponent(chemicalData.name + ' synthesis')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-xs hover:bg-slate-700 font-medium flex items-center space-x-1.5 transition"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Search Google Patents</span>
+                          </a>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -557,7 +580,7 @@ export default function App() {
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-emerald-400">
                     <ArrowDown className="w-3.5 h-3.5" />
-                    <span>Downstream Derivatives & Products</span>
+                    <span>Downstream Derivatives & Salt Forms</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -565,7 +588,7 @@ export default function App() {
                       chemicalData.next.map((item: any, index: number) => (
                         <div
                           key={index}
-                          onClick={() => navigateToChemical(item.cid)}
+                          onClick={() => navigateToChemical(item)}
                           className={`p-5 rounded-2xl border cursor-pointer hover:border-emerald-500/50 transition group ${
                             themeMode === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                           }`}
@@ -585,7 +608,7 @@ export default function App() {
                       ))
                     ) : (
                       <div className="col-span-2 p-6 rounded-2xl border border-slate-800/80 bg-slate-900/40 text-center text-xs text-slate-400 italic">
-                        No direct downstream derivatives indexed in PubChem for this compound.
+                        No direct downstream derivatives indexed for this compound.
                       </div>
                     )}
                   </div>
