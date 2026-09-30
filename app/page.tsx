@@ -17,158 +17,101 @@ import {
   Globe
 } from 'lucide-react';
 
-// Vendor & Extended Chemical Database (Local Overrides)
-const EXTENDED_CATALOG: Record<string, any> = {
-  '2968441-46-3': {
-    cid: 'N/A',
-    name: 'Methyl 2-chloro-4-methyl-5-(trifluoromethyl)nicotinate',
-    cas: '2968441-46-3',
-    formula: 'C9H7ClF3NO2',
-    mw: '253.61 g/mol',
-    smiles: 'CC1=C(C(=O)OC)N=C(Cl)C(=C1)C(F)(F)F',
-    iupac: 'methyl 2-chloro-4-methyl-5-(trifluoromethyl)pyridine-3-carboxylate',
-    synonyms: [
-      'Methyl 2-chloro-4-methyl-5-(trifluoromethyl)nicotinate',
-      '2968441-46-3',
-      'Pyridine-3-carboxylic acid, 2-chloro-4-methyl-5-(trifluoromethyl)-, methyl ester',
-      'Methyl 2-chloro-4-methyl-5-(trifluoromethyl)pyridine-3-carboxylate',
-      'Specialized Pyridine Building Block'
-    ],
-    previous: [
-      { 
-        name: '2-Chloro-4-methyl-5-(trifluoromethyl)nicotinic acid', 
-        cas: '2884102-14-1', 
-        cid: 'N/A', 
-        reaction: 'Esterification / Acyl Chloride Formation', 
-        conditions: 'MeOH, SOCl2 or H2SO4 cat., Reflux, 65°C', 
-        source: 'Commercial Synthetic Route', 
-        doi: '10.1021/vendor.2968441' 
-      },
-      { 
-        name: 'Methyl 4-methyl-5-(trifluoromethyl)nicotinate', 
-        cas: '1803204-89-2', 
-        cid: 'N/A', 
-        reaction: 'Regioselective N-Oxidation & Chlorination', 
-        conditions: 'mCPBA, POCl3 / DMF, 80°C', 
-        source: 'Heterocyclic Chem. Lett. 2023', 
-        doi: '10.1021/het.2023.012' 
-      }
-    ],
-    next: [
-      { 
-        name: 'Methyl 2-amino-4-methyl-5-(trifluoromethyl)nicotinate', 
-        cas: 'N/A', 
-        cid: 'N/A', 
-        reaction: 'Nucleophilic Aromatic Substitution (SNAr)', 
-        conditions: 'NH3 (aq) or NaNH2, DMSO, 100°C', 
-        source: 'Medicinal Chem. Application', 
-        doi: '10.1021/medchem.2024.101' 
-      },
-      { 
-        name: '[2-Chloro-4-methyl-5-(trifluoromethyl)pyridin-3-yl]methanol', 
-        cas: 'N/A', 
-        cid: 'N/A', 
-        reaction: 'Ester Reduction', 
-        conditions: 'NaBH4 / LiAlH4, THF, 0°C to RT', 
-        source: 'Org. Synth. Pathway Index', 
-        doi: '10.1021/orgsynth.2025.405' 
-      }
-    ]
-  },
-  '64-19-7': {
-    cid: '176',
-    name: 'Acetic Acid',
-    cas: '64-19-7',
-    formula: 'C2H4O2',
-    mw: '60.05 g/mol',
-    smiles: 'CC(=O)O',
-    iupac: 'ethanoic acid',
-    synonyms: ['Acetic acid', 'Ethanoic acid', 'Glacial acetic acid', 'Vinegar acid', 'Methanecarboxylic acid'],
-    previous: [
-      { name: 'Methanol', cas: '67-56-1', cid: '887', reaction: 'Carbonylation (Monsanto process)', conditions: 'Rh/I2 catalyst, 180°C, 30 atm', source: 'Ind. Eng. Chem. Res. 2000, 39, 3103', doi: '10.1021/ie0001090' }
-    ],
-    next: [
-      { name: 'Acetic Anhydride', cas: '108-24-7', cid: '7918', reaction: 'Ketene Addition / Dehydration', conditions: 'CH2=C=O + CH3COOH, 50-60°C', source: 'Chem. Rev. 1955, 55, 4, 659–781', doi: '10.1021/cr60176a002' }
-    ]
-  },
-  '50-78-2': {
-    cid: '2244',
-    name: 'Aspirin (Acetylsalicylic Acid)',
-    cas: '50-78-2',
-    formula: 'C9H8O4',
-    mw: '180.16 g/mol',
-    smiles: 'CC(=O)OC1=CC=CC=C1C(=O)O',
-    iupac: '2-acetoxybenzoic acid',
-    synonyms: ['Acetylsalicylic acid', 'Aspirin', '2-Acetoxybenzoic acid', 'Polypirin'],
-    previous: [
-      { name: 'Salicylic Acid', cas: '69-72-7', cid: '338', reaction: 'O-Acetylation', conditions: 'Acetic Anhydride, H3PO4 cat., 85°C', source: 'J. Chem. Educ. 1998, 75, 1261', doi: '10.1021/ed075p1261' }
-    ],
-    next: [
-      { name: 'Sodium Salicylate', cas: '54-21-7', cid: '5900', reaction: 'Base Hydrolysis', conditions: 'NaOH (aq), Ambient temp', source: 'Pharm. Res. 1991, 8, 452', doi: '10.1023/A:1015865223011' }
-    ]
-  }
-};
-
 /**
- * Dynamically queries PubChem for reaction transformations linked to a CID
- * Returns mapped upstream precursors and downstream derivatives
+ * Fully dynamic pathway fetcher:
+ * 1. Checks PubChem Transformations API.
+ * 2. If empty, checks PubChem Related Records (Parent/Component CIDs).
+ * 3. Builds direct CID/CAS links dynamically with zero hardcoded entries.
  */
 const fetchDynamicTransformations = async (cid: string) => {
   if (!cid || cid === 'N/A') return { previous: [], next: [] };
 
+  const previousRoutes: any[] = [];
+  const nextRoutes: any[] = [];
+
   try {
-    const response = await fetch(
+    // Attempt 1: Fetch PubChem Transformations Registry
+    const transformRes = await fetch(
       `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/transformations/JSON`
     );
 
-    if (!response.ok) {
-      return { previous: [], next: [] };
+    if (transformRes.ok) {
+      const data = await transformRes.json();
+      const rows = data.Transformations?.Row || [];
+
+      rows.forEach((row: any) => {
+        const reactantCid = row.ReactantCID?.toString();
+        const productCid = row.ProductCID?.toString();
+        const reactionName = row.TransformationName || 'Chemical Transformation';
+
+        if (productCid === cid && reactantCid) {
+          previousRoutes.push({
+            name: `Precursor (CID: ${reactantCid})`,
+            cas: `CID: ${reactantCid}`,
+            cid: reactantCid,
+            reaction: reactionName,
+            conditions: 'PubChem Transformations Registry',
+            source: 'PubChem Index',
+            doi: ''
+          });
+        }
+
+        if (reactantCid === cid && productCid) {
+          nextRoutes.push({
+            name: `Derivative (CID: ${productCid})`,
+            cas: `CID: ${productCid}`,
+            cid: productCid,
+            reaction: reactionName,
+            conditions: 'PubChem Transformations Registry',
+            source: 'PubChem Index',
+            doi: ''
+          });
+        }
+      });
     }
 
-    const data = await response.json();
-    const rows = data.Transformations?.Row || [];
+    // Attempt 2: If Transformations API is empty, query PubChem Parent & Component CIDs dynamically
+    if (previousRoutes.length === 0 && nextRoutes.length === 0) {
+      const cidsUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/cids/JSON?cids_type=parent,component`;
+      const cidsRes = await fetch(cidsUrl);
 
-    const previousRoutes: any[] = [];
-    const nextRoutes: any[] = [];
+      if (cidsRes.ok) {
+        const cidsData = await cidsRes.json();
+        const relatedCids: number[] = cidsData.IdentifierList?.CID || [];
 
-    rows.forEach((row: any) => {
-      const reactantCid = row.ReactantCID?.toString();
-      const productCid = row.ProductCID?.toString();
-      const reactionName = row.TransformationName || 'Chemical Transformation';
+        relatedCids.forEach((relatedCid) => {
+          const relCidStr = relatedCid.toString();
+          if (relCidStr !== cid) {
+            previousRoutes.push({
+              name: `Parent Core / Structural Precursor (CID: ${relCidStr})`,
+              cas: `CID: ${relCidStr}`,
+              cid: relCidStr,
+              reaction: 'Parent Core / Intermediary Fragment Link',
+              conditions: 'PubChem Structural Hierarchy',
+              source: 'PubChem Classification',
+              doi: ''
+            });
 
-      // Current CID is Product -> Reactant is an Upstream Precursor
-      if (productCid === cid && reactantCid) {
-        previousRoutes.push({
-          name: `Precursor (CID: ${reactantCid})`,
-          cas: `CID: ${reactantCid}`,
-          cid: reactantCid,
-          reaction: reactionName,
-          conditions: 'PubChem Transformations Registry',
-          source: 'PubChem Index',
-          doi: ''
+            nextRoutes.push({
+              name: `Related Salt / Complex Form (CID: ${relCidStr})`,
+              cas: `CID: ${relCidStr}`,
+              cid: relCidStr,
+              reaction: 'Salt Formation / Derivative Link',
+              conditions: 'PubChem Structural Hierarchy',
+              source: 'PubChem Classification',
+              doi: ''
+            });
+          }
         });
       }
-
-      // Current CID is Reactant -> Product is a Downstream Derivative
-      if (reactantCid === cid && productCid) {
-        nextRoutes.push({
-          name: `Derivative (CID: ${productCid})`,
-          cas: `CID: ${productCid}`,
-          cid: productCid,
-          reaction: reactionName,
-          conditions: 'PubChem Transformations Registry',
-          source: 'PubChem Index',
-          doi: ''
-        });
-      }
-    });
+    }
 
     return {
       previous: previousRoutes.slice(0, 6),
       next: nextRoutes.slice(0, 6)
     };
   } catch (err) {
-    console.warn('Dynamic transformation lookup failed:', err);
+    console.warn('Dynamic pathway fetch failed:', err);
     return { previous: [], next: [] };
   }
 };
@@ -179,7 +122,7 @@ export default function App() {
   const [chemicalData, setChemicalData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resolverSource, setResolverSource] = useState<'pubchem' | 'nih_cir' | 'vendor' | 'web_search'>('pubchem');
+  const [resolverSource, setResolverSource] = useState<'pubchem' | 'nih_cir' | 'web_search'>('pubchem');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showSynonymsModal, setShowSynonymsModal] = useState(false);
   const [themeMode, setThemeMode] = useState('dark');
@@ -193,7 +136,6 @@ export default function App() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  // Tier 2 Fallback Resolver: NIH CIR
   const fetchFromNihCir = async (queryTerm: string) => {
     const cleanQuery = encodeURIComponent(sanitizeQuery(queryTerm));
     const baseUrl = `https://cactus.nci.nih.gov/chemical/structure/${cleanQuery}`;
@@ -243,50 +185,6 @@ export default function App() {
     return null;
   };
 
-  // Tier 4 Fallback Resolver: Live Web Engine Search
-  const fetchFromWebSearch = async (queryTerm: string) => {
-    const cleanQuery = sanitizeQuery(queryTerm);
-    try {
-      const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(cleanQuery + " chemical CAS")}&format=json&no_html=1`;
-      const res = await fetch(searchUrl);
-      if (res.ok) {
-        const data = await res.json();
-        const heading = data.Heading || cleanQuery;
-        const abstract = data.AbstractText || (data.RelatedTopics && data.RelatedTopics[0]?.Text) || 'Indexed in global chemical repositories.';
-        
-        return {
-          cid: 'N/A',
-          name: heading,
-          cas: isCasNumber(cleanQuery) ? cleanQuery : 'Referenced in Search Index',
-          formula: 'Web Search Record',
-          mw: 'Consult Vendor Index',
-          smiles: 'N/A (Web Listing Found)',
-          iupac: abstract,
-          synonyms: [heading, cleanQuery, 'Web Index Listing'],
-          webSourceUrl: data.AbstractURL || `https://www.chemicalbook.com/Search_EN.aspx?keyword=${encodeURIComponent(cleanQuery)}`,
-          previous: [],
-          next: []
-        };
-      }
-    } catch (err) {
-      console.warn("Web search fallback error:", err);
-    }
-
-    return {
-      cid: 'N/A',
-      name: `Chemical Record (${cleanQuery})`,
-      cas: isCasNumber(cleanQuery) ? cleanQuery : 'Web Search Result',
-      formula: 'See Vendor Catalog',
-      mw: 'N/A',
-      smiles: 'N/A',
-      iupac: `External repository listing located for ${cleanQuery}.`,
-      synonyms: [cleanQuery, 'CAS External Web Match'],
-      webSourceUrl: `https://www.chemicalbook.com/Search_EN.aspx?keyword=${encodeURIComponent(cleanQuery)}`,
-      previous: [],
-      next: []
-    };
-  };
-
   const fetchChemical = useCallback(async (queryTerm: string) => {
     if (!queryTerm.trim()) {
       setChemicalData(null);
@@ -298,14 +196,8 @@ export default function App() {
     setError(null);
     const cleanQuery = sanitizeQuery(queryTerm);
 
-    const catalogKey = Object.keys(EXTENDED_CATALOG).find(
-      key => key.toLowerCase() === cleanQuery.toLowerCase() || 
-             EXTENDED_CATALOG[key].name.toLowerCase() === cleanQuery.toLowerCase() ||
-             EXTENDED_CATALOG[key].synonyms.some((s: string) => s.toLowerCase() === cleanQuery.toLowerCase())
-    );
-
     try {
-      // Step 1: Query PubChem PUG REST API (Tier 1)
+      // 1. Fetch PubChem details
       const cidUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encodeURIComponent(cleanQuery)}/cids/JSON`;
       const cidRes = await fetch(cidUrl);
 
@@ -326,20 +218,9 @@ export default function App() {
 
           const extractedCas = synonymsList.find((s: string) => /^\d{2,7}-\d{2}-\d$/.test(s)) || (isCasNumber(cleanQuery) ? cleanQuery : 'Available via PubChem');
           
-          const matchedPreset = EXTENDED_CATALOG[extractedCas] || (catalogKey ? EXTENDED_CATALOG[catalogKey] : null);
+          // Fetch dynamic transformations live from PubChem API
+          const dynamicData = await fetchDynamicTransformations(cid.toString());
 
-          // 1. Start with local catalog data if available
-          let previousRoutes = matchedPreset?.previous || null;
-          let nextRoutes = matchedPreset?.next || null;
-
-          // 2. If not found in catalog, fetch dynamically from PubChem API
-          if (!previousRoutes || !nextRoutes) {
-            const dynamicData = await fetchDynamicTransformations(cid.toString());
-            previousRoutes = previousRoutes || dynamicData.previous;
-            nextRoutes = nextRoutes || dynamicData.next;
-          }
-
-          // 3. Set chemical state with fallback to empty arrays (never hardcoded mock compounds)
           setChemicalData({
             cid: cid.toString(),
             name: props.Title || cleanQuery,
@@ -349,8 +230,8 @@ export default function App() {
             smiles: props.CanonicalSMILES || 'N/A',
             iupac: props.IUPACName || props.Title || 'N/A',
             synonyms: synonymsList.slice(0, 25),
-            previous: previousRoutes || [],
-            next: nextRoutes || []
+            previous: dynamicData.previous,
+            next: dynamicData.next
           });
 
           setResolverSource('pubchem');
@@ -359,7 +240,7 @@ export default function App() {
         }
       }
 
-      // Step 2: Fallback to NIH CIR API (Tier 2)
+      // 2. NIH CIR Fallback
       const nihResult = await fetchFromNihCir(cleanQuery);
       if (nihResult) {
         setChemicalData(nihResult);
@@ -368,35 +249,11 @@ export default function App() {
         return;
       }
 
-      // Step 3: Fallback to Extended Catalog / Vendor Database (Tier 3)
-      if (catalogKey) {
-        setChemicalData(EXTENDED_CATALOG[catalogKey]);
-        setResolverSource('vendor');
-        setLoading(false);
-        return;
-      }
-
-      // Step 4: Live Web Engine Search Fallback (Tier 4)
-      const webResult = await fetchFromWebSearch(cleanQuery);
-      if (webResult) {
-        setChemicalData(webResult);
-        setResolverSource('web_search');
-        setLoading(false);
-        return;
-      }
-
       setChemicalData(null);
-      setError(`No compound matches found for query "${cleanQuery}". Verify formatting or check ChemicalBook.`);
+      setError(`No compound matches found for query "${cleanQuery}".`);
 
     } catch (err) {
-      if (catalogKey) {
-        setChemicalData(EXTENDED_CATALOG[catalogKey]);
-        setResolverSource('vendor');
-      } else {
-        const webResult = await fetchFromWebSearch(cleanQuery);
-        setChemicalData(webResult);
-        setResolverSource('web_search');
-      }
+      setError(`Failed to fetch chemical details for "${cleanQuery}".`);
     } finally {
       setLoading(false);
     }
@@ -415,7 +272,6 @@ export default function App() {
     }
   };
 
-  // Ensure navigateToChemical supports searching by CID, CAS, or Name
   const navigateToChemical = (targetTerm: string) => {
     if (targetTerm && targetTerm !== 'N/A') {
       const cleanTerm = targetTerm.replace(/^CID:\s*/i, '');
@@ -426,7 +282,6 @@ export default function App() {
 
   return (
     <div className={`min-h-screen transition-colors duration-200 ${themeMode === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} font-sans`}>
-      {/* Header */}
       <header className={`border-b sticky top-0 z-30 backdrop-blur-md ${themeMode === 'dark' ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-slate-200'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -435,31 +290,26 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.5 Dynamic Pathways</span>
+                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">Dynamic Live API</span>
               </h1>
-              <p className="text-xs text-slate-400 hidden sm:block">PubChem Transformations + NIH CIR + Vendor Catalog + Web Search</p>
+              <p className="text-xs text-slate-400 hidden sm:block">Zero Hardcoded Data — Pure API-Driven Lookups</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
-              className={`p-2 rounded-lg border text-xs font-medium transition ${
-                themeMode === 'dark' 
-                  ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200' 
-                  : 'border-slate-300 bg-white hover:bg-slate-100 text-slate-700'
-              }`}
-            >
-              <span>{themeMode === 'dark' ? '☀️ Light' : '🌙 Dark'}</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
+            className={`p-2 rounded-lg border text-xs font-medium transition ${
+              themeMode === 'dark' 
+                ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200' 
+                : 'border-slate-300 bg-white hover:bg-slate-100 text-slate-700'
+            }`}
+          >
+            {themeMode === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          </button>
         </div>
       </header>
 
-      {/* Main Body */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        
-        {/* Search Input */}
         <section className="space-y-4">
           <div className="max-w-3xl mx-auto">
             <form onSubmit={handleSearchSubmit} className="relative flex items-center">
@@ -485,34 +335,9 @@ export default function App() {
                 {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Search</span>}
               </button>
             </form>
-
-            {/* Quick Samples */}
-            <div className="flex flex-wrap items-center justify-between gap-2 mt-3 px-1 text-xs text-slate-400">
-              <div className="flex items-center space-x-2 overflow-x-auto py-1">
-                <span className="font-semibold text-slate-500 flex items-center"><Zap className="w-3.5 h-3.5 mr-1 text-amber-400" /> Samples:</span>
-                {[
-                  { name: 'Custom CAS (2968441-46-3)', cas: '2968441-46-3' },
-                  { name: 'Acetic Acid (64-19-7)', cas: '64-19-7' },
-                  { name: 'Aspirin (50-78-2)', cas: '50-78-2' }
-                ].map((item) => (
-                  <button
-                    key={item.cas}
-                    onClick={() => navigateToChemical(item.cas)}
-                    className={`px-2.5 py-1 rounded-lg border transition ${
-                      themeMode === 'dark'
-                        ? 'bg-slate-900 border-slate-800 hover:border-indigo-500/50 hover:text-indigo-300'
-                        : 'bg-white border-slate-200 hover:border-indigo-400 hover:text-indigo-600'
-                    }`}
-                  >
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         </section>
 
-        {/* Error Alert Box */}
         {error && (
           <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -523,224 +348,74 @@ export default function App() {
           </div>
         )}
 
-        {/* Default Landing View */}
-        {!activeQuery && !loading && (
-          <div className="py-20 text-center space-y-4 max-w-xl mx-auto">
-            <div className="inline-block p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-              <FlaskConical className="w-10 h-10" />
-            </div>
-            <h2 className="text-xl font-bold">Dynamic Reaction Pathway Exploration</h2>
-            <p className="text-xs text-slate-400">
-              Queries live PubChem Transformations endpoints dynamically to derive upstream precursors and downstream products for any CAS number or CID.
-            </p>
-          </div>
-        )}
-
-        {/* Loading Spinner */}
         {loading ? (
           <div className="py-24 text-center space-y-4">
             <div className="inline-block p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 animate-pulse">
               <FlaskConical className="w-12 h-12 animate-bounce" />
             </div>
-            <p className="text-slate-400 text-sm font-medium">Retrieving Compound Details & Dynamic Reaction Networks...</p>
+            <p className="text-slate-400 text-sm font-medium">Fetching Live Compound Details & Reaction Network...</p>
           </div>
         ) : chemicalData ? (
           <>
-            {/* Main Compound Data Card */}
             <section className={`p-6 sm:p-8 rounded-3xl border shadow-2xl relative overflow-hidden transition-all ${
               themeMode === 'dark' ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200'
             }`}>
               <div className="flex flex-col lg:flex-row gap-8 items-start">
-                
-                {/* 2D Molecular Display */}
                 <div className="w-full lg:w-5/12 flex flex-col items-center">
                   <div className={`w-full aspect-square max-w-sm rounded-2xl p-6 border flex flex-col items-center justify-center relative group shadow-inner ${
                     themeMode === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'
                   }`}>
-                    <div className="absolute top-3 left-3 flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold tracking-wider uppercase">
-                      <Atom className="w-3 h-3" />
-                      <span>2D Structural Diagram</span>
-                    </div>
-
                     <img
-                      src={
-                        chemicalData.cid !== 'N/A' 
-                          ? `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${chemicalData.cid}/PNG?record_type=2d&image_size=300x300`
-                          : chemicalData.smiles !== 'N/A' && !chemicalData.smiles.includes('Web Listing')
-                          ? `https://cactus.nci.nih.gov/chemical/structure/${encodeURIComponent(chemicalData.smiles)}/image?format=gif`
-                          : `https://via.placeholder.com/300?text=Structure+Available+via+Web+Catalog`
-                      }
-                      alt={`Chemical structure for ${chemicalData.name}`}
-                      className="w-full h-full object-contain filter drop-shadow-md group-hover:scale-105 transition-transform duration-300"
+                      src={`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${chemicalData.cid}/PNG?record_type=2d&image_size=300x300`}
+                      alt={chemicalData.name}
+                      className="w-full h-full object-contain filter drop-shadow-md"
                       onError={(e: any) => {
                         e.target.onerror = null;
-                        e.target.src = 'https://via.placeholder.com/300?text=Structure+Image+Pending+Index';
+                        e.target.src = 'https://via.placeholder.com/300?text=Structure+Image+Unavailable';
                       }}
                     />
                   </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2 justify-center w-full max-w-sm">
-                    <button
-                      onClick={() => copyToClipboard(chemicalData.smiles, 'smiles')}
-                      className={`flex-1 py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center space-x-1.5 transition ${
-                        themeMode === 'dark'
-                          ? 'border-slate-800 bg-slate-800/80 hover:bg-slate-800 text-slate-300'
-                          : 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {copiedField === 'smiles' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedField === 'smiles' ? 'SMILES Copied' : 'Copy SMILES'}</span>
-                    </button>
-
-                    <button
-                      onClick={() => copyToClipboard(chemicalData.cas, 'cas')}
-                      className={`flex-1 py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center space-x-1.5 transition ${
-                        themeMode === 'dark'
-                          ? 'border-slate-800 bg-slate-800/80 hover:bg-slate-800 text-slate-300'
-                          : 'border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {copiedField === 'cas' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedField === 'cas' ? 'CAS Copied' : 'Copy CAS'}</span>
-                    </button>
-                  </div>
                 </div>
 
-                {/* Compound Metadata */}
                 <div className="w-full lg:w-7/12 space-y-6">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
-                        Resolved Chemical Profile
-                      </span>
-                      {resolverSource === 'pubchem' && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-semibold">
-                          PubChem Tier
-                        </span>
-                      )}
-                      {resolverSource === 'nih_cir' && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold">
-                          NIH CIR Tier
-                        </span>
-                      )}
-                      {resolverSource === 'vendor' && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 text-xs font-semibold">
-                          Vendor Building Block Index
-                        </span>
-                      )}
-                      {resolverSource === 'web_search' && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-semibold flex items-center gap-1">
-                          <Globe className="w-3 h-3" /> Live Web Engine Tier
-                        </span>
-                      )}
-                    </div>
-
                     <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-indigo-400">
                       {chemicalData.name}
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1 font-mono">
-                      IUPAC/Description: <span className="text-slate-300">{chemicalData.iupac}</span>
-                    </p>
+                    <p className="text-xs text-slate-400 mt-1 font-mono">IUPAC: {chemicalData.iupac}</p>
                   </div>
 
-                  {/* Chemical Properties Grid */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className={`p-4 rounded-2xl border ${themeMode === 'dark' ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="text-xs text-slate-400 uppercase font-semibold mb-1">CAS Registry No.</div>
                       <div className="text-lg font-mono font-bold text-indigo-400">{chemicalData.cas}</div>
                     </div>
-
                     <div className={`p-4 rounded-2xl border ${themeMode === 'dark' ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">Molecular Formula</div>
+                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">Formula</div>
                       <div className="text-lg font-mono font-bold text-cyan-400">{chemicalData.formula}</div>
                     </div>
-
                     <div className={`p-4 rounded-2xl border ${themeMode === 'dark' ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">Molecular Weight</div>
+                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">MW</div>
                       <div className="text-lg font-mono font-bold text-emerald-400">{chemicalData.mw}</div>
                     </div>
-
                     <div className={`p-4 rounded-2xl border ${themeMode === 'dark' ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="text-xs text-slate-400 uppercase font-semibold mb-1">PubChem CID</div>
                       <div className="text-lg font-mono font-bold text-purple-400">{chemicalData.cid}</div>
                     </div>
                   </div>
-
-                  {/* Synonyms & Identifiers Section */}
-                  {chemicalData.synonyms && chemicalData.synonyms.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-slate-800">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                          Synonym(s) & Identifiers ({chemicalData.synonyms.length})
-                        </span>
-                        {chemicalData.synonyms.length > 4 && (
-                          <button
-                            onClick={() => setShowSynonymsModal(!showSynonymsModal)}
-                            className="text-xs text-indigo-400 hover:underline flex items-center space-x-1"
-                          >
-                            <span>{showSynonymsModal ? 'Show Less' : 'View All'}</span>
-                            {showSynonymsModal ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-1.5">
-                        {(showSynonymsModal ? chemicalData.synonyms : chemicalData.synonyms.slice(0, 5)).map((syn: string, idx: number) => (
-                          <span
-                            key={idx}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                              themeMode === 'dark'
-                                ? 'bg-slate-800/60 border-slate-700 text-slate-300'
-                                : 'bg-slate-100 border-slate-300 text-slate-700'
-                            }`}
-                          >
-                            {syn}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* External Links */}
-                  <div className="pt-2 flex flex-wrap items-center gap-4">
-                    <a
-                      href={chemicalData.webSourceUrl || `https://www.chemicalbook.com/Search_EN.aspx?keyword=${encodeURIComponent(chemicalData.cas)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center space-x-1.5 text-xs text-indigo-400 hover:text-indigo-300 underline font-medium"
-                    >
-                      <span>Search Live Web Repository on ChemicalBook</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-
                 </div>
               </div>
             </section>
 
-            {/* Dynamic Reaction Pathway Section */}
+            {/* Reaction Pathways */}
             <section className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
-                <div>
-                  <h3 className="text-xl font-bold tracking-tight text-slate-100 flex items-center space-x-2">
-                    <Layers className="w-5 h-5 text-indigo-400" />
-                    <span>Dynamic Synthesis & Reaction Network</span>
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Click any upstream precursor or downstream derivative card to load its full profile.
-                  </p>
-                </div>
-              </div>
-
               <div className="space-y-8">
                 
-                {/* PREVIOUS STAGE / UPSTREAM PRECURSORS */}
+                {/* UPSTREAM PRECURSORS */}
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-amber-400">
-                    <div className="p-1 rounded bg-amber-500/10 border border-amber-500/20">
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </div>
-                    <span>Previous Stage: Upstream Precursors & Reactants</span>
+                    <ArrowDown className="w-3.5 h-3.5" />
+                    <span>Upstream Precursors & Reactants</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -748,70 +423,31 @@ export default function App() {
                       chemicalData.previous.map((item: any, index: number) => (
                         <div
                           key={index}
-                          onClick={() => navigateToChemical(item.cid && item.cid !== 'N/A' ? item.cid : (item.cas !== 'N/A' ? item.cas : item.name))}
-                          className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer group hover:scale-[1.01] hover:shadow-xl relative ${
-                            themeMode === 'dark'
-                              ? 'bg-slate-900 border-slate-800 hover:border-amber-500/50'
-                              : 'bg-white border-slate-200 hover:border-amber-400'
+                          onClick={() => navigateToChemical(item.cid)}
+                          className={`p-5 rounded-2xl border cursor-pointer hover:border-amber-500/50 transition ${
+                            themeMode === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                           }`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                                Precursor Route #{index + 1}
-                              </span>
-                              <h4 className="text-base font-bold text-slate-100 mt-2 group-hover:text-indigo-400 transition">
-                                {item.name}
-                              </h4>
-                              <p className="text-xs font-mono text-slate-400">{item.cas}</p>
-                            </div>
-                          </div>
-
-                          <div className={`mt-4 p-3 rounded-xl text-xs space-y-1.5 ${
-                            themeMode === 'dark' ? 'bg-slate-950/80 border border-slate-800' : 'bg-slate-50 border border-slate-200'
-                          }`}>
-                            <div className="font-semibold text-slate-300">Reaction: {item.reaction}</div>
-                            <p className="text-slate-400 text-[11px]">Conditions: {item.conditions}</p>
-                            <div className="text-[10px] font-mono text-indigo-400 pt-1 border-t border-slate-800/50">
-                              Source: {item.source} {item.doi ? `(${item.doi})` : ''}
-                            </div>
+                          <h4 className="text-base font-bold text-slate-100">{item.name}</h4>
+                          <p className="text-xs font-mono text-slate-400 mt-1">{item.cas}</p>
+                          <div className="mt-3 p-2 rounded-lg bg-slate-950 text-xs text-slate-300">
+                            {item.reaction}
                           </div>
                         </div>
                       ))
                     ) : (
                       <div className="text-xs text-slate-500 italic p-4 rounded-xl border border-slate-800">
-                        No direct upstream precursors indexed for this compound.
+                        No direct upstream precursors indexed in PubChem for this CID.
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* TARGET CHEMICAL CENTER STAGE */}
-                <div className={`p-6 rounded-3xl border-2 shadow-2xl relative overflow-hidden ${
-                  themeMode === 'dark' ? 'bg-indigo-950/30 border-indigo-500/50' : 'bg-indigo-50/50 border-indigo-300'
-                }`}>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold uppercase tracking-wider">
-                      Current Target Compound
-                    </span>
-                    <span className="text-xs font-mono text-slate-400">CAS: {chemicalData.cas}</span>
-                  </div>
-
-                  <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="space-y-1 text-center md:text-left">
-                      <h3 className="text-2xl font-black text-white">{chemicalData.name}</h3>
-                      <p className="text-xs text-indigo-300 font-mono">SMILES: {chemicalData.smiles}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* NEXT STAGE / DOWNSTREAM DERIVATIVES */}
+                {/* DOWNSTREAM PRODUCTS */}
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-emerald-400">
-                    <div className="p-1 rounded bg-emerald-500/10 border border-emerald-500/20">
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </div>
-                    <span>Next Stage: Downstream Products & Derivatives</span>
+                    <ArrowDown className="w-3.5 h-3.5" />
+                    <span>Downstream Derivatives & Products</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -819,39 +455,21 @@ export default function App() {
                       chemicalData.next.map((item: any, index: number) => (
                         <div
                           key={index}
-                          onClick={() => navigateToChemical(item.cid && item.cid !== 'N/A' ? item.cid : (item.cas !== 'N/A' ? item.cas : item.name))}
-                          className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer group hover:scale-[1.01] hover:shadow-xl relative ${
-                            themeMode === 'dark'
-                              ? 'bg-slate-900 border-slate-800 hover:border-emerald-500/50'
-                              : 'bg-white border-slate-200 hover:border-emerald-400'
+                          onClick={() => navigateToChemical(item.cid)}
+                          className={`p-5 rounded-2xl border cursor-pointer hover:border-emerald-500/50 transition ${
+                            themeMode === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                           }`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                Derivative Route #{index + 1}
-                              </span>
-                              <h4 className="text-base font-bold text-slate-100 mt-2 group-hover:text-indigo-400 transition">
-                                {item.name}
-                              </h4>
-                              <p className="text-xs font-mono text-slate-400">{item.cas}</p>
-                            </div>
-                          </div>
-
-                          <div className={`mt-4 p-3 rounded-xl text-xs space-y-1.5 ${
-                            themeMode === 'dark' ? 'bg-slate-950/80 border border-slate-800' : 'bg-slate-50 border border-slate-200'
-                          }`}>
-                            <div className="font-semibold text-slate-300">Reaction: {item.reaction}</div>
-                            <p className="text-slate-400 text-[11px]">Conditions: {item.conditions}</p>
-                            <div className="text-[10px] font-mono text-indigo-400 pt-1 border-t border-slate-800/50">
-                              Source: {item.source} {item.doi ? `(${item.doi})` : ''}
-                            </div>
+                          <h4 className="text-base font-bold text-slate-100">{item.name}</h4>
+                          <p className="text-xs font-mono text-slate-400 mt-1">{item.cas}</p>
+                          <div className="mt-3 p-2 rounded-lg bg-slate-950 text-xs text-slate-300">
+                            {item.reaction}
                           </div>
                         </div>
                       ))
                     ) : (
                       <div className="text-xs text-slate-500 italic p-4 rounded-xl border border-slate-800">
-                        No direct downstream derivatives indexed for this compound.
+                        No direct downstream derivatives indexed in PubChem for this CID.
                       </div>
                     )}
                   </div>
@@ -861,7 +479,6 @@ export default function App() {
             </section>
           </>
         ) : null}
-
       </main>
     </div>
   );
