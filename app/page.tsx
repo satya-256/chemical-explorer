@@ -16,10 +16,13 @@ import {
 } from 'lucide-react';
 
 /**
- * Multi-tier Dynamic Reaction & Synthesis Fetcher:
- * 1. Queries PubChem PUG View API (`/pug_view/data/compound/{cid}/JSON?heading=Synthesis`) to extract live synthesis steps, literature references, and patents.
- * 2. Queries PubChem Parent/Component CIDs to link parent free-acid / salt forms dynamically.
- * 3. Falls back to generating live target-bound literature & patent deep links if no structured reaction steps are indexed.
+ * Multi-Source Hybrid Engine for Dynamic Reaction & Synthesis Fetching:
+ * 1. PubChem Transformations API (`/pug/compound/cid/{cid}/transformations/JSON`)
+ *    - Captures metabolic & chemical reaction links (e.g., Toluene -> Benzoic Acid / Benzyl Alcohol).
+ * 2. PubChem PUG View Synthesis API (`/pug_view/data/compound/{cid}/JSON?heading=Synthesis`)
+ *    - Captures literature/patent synthesis notes and methods.
+ * 3. Parent/Component CID Lookup (`/pug/compound/cid/{cid}/cids/JSON?cids_type=parent`)
+ *    - Handles structural hierarchy, free bases, and salts.
  */
 const fetchDynamicTransformations = async (cid: string, compoundName: string, casNumber: string) => {
   if (!cid || cid === 'N/A') return { previous: [], next: [], synthesisNotes: [] };
@@ -29,15 +32,71 @@ const fetchDynamicTransformations = async (cid: string, compoundName: string, ca
   const synthesisNotes: any[] = [];
 
   try {
-    // 1. Query PubChem PUG View API specifically for "Synthesis" record headings
-    const synthesisUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=Synthesis`;
-    const synthRes = await fetch(synthesisUrl);
+    // 1. QUERY PUBCHEM TRANSFORMATIONS, SYNTHESIS, & PARENT CIDs IN PARALLEL
+    const transformUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/transformations/JSON`;
+    
+    const [transformRes, synthRes, parentRes] = await Promise.allSettled([
+      fetch(transformUrl),
+      fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/${cid}/JSON?heading=Synthesis`),
+      fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/cids/JSON?cids_type=parent`)
+    ]);
 
-    if (synthRes.ok) {
-      const synthData = await synthRes.json();
+    // Parse 1: Transformations API (Product / Reaction Mapping)
+    if (transformRes.status === 'fulfilled' && transformRes.value.ok) {
+      const transformData = await transformRes.value.json();
+      const transformations = transformData.Transformations?.Transformation || [];
+
+      // Collect product & substrate CIDs to fetch their titles in batch
+      const targetCids = transformations
+        .map((t: any) => t.ProductCID || t.SubstrateCID)
+        .filter((id: any) => id && id.toString() !== cid);
+
+      if (targetCids.length > 0) {
+        const uniqueTargetCids = Array.from(new Set(targetCids)).slice(0, 8);
+        
+        try {
+          const namesRes = await fetch(
+            `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${uniqueTargetCids.join(',')}/property/Title/JSON`
+          );
+          if (namesRes.ok) {
+            const namesData = await namesRes.json();
+            const props = namesData.PropertyTable?.Properties || [];
+            const cidToTitleMap = new Map(props.map((p: any) => [p.CID.toString(), p.Title]));
+
+            transformations.forEach((trans: any) => {
+              const isUpstream = trans.ProductCID?.toString() === cid;
+              const linkedCid = isUpstream ? trans.SubstrateCID?.toString() : trans.ProductCID?.toString();
+              
+              if (linkedCid && linkedCid !== cid) {
+                const routeItem = {
+                  name: cidToTitleMap.get(linkedCid) || `Compound CID: ${linkedCid}`,
+                  cas: `CID: ${linkedCid}`,
+                  cid: linkedCid,
+                  reaction: trans.ReactionType || 'Chemical / Biological Transformation',
+                  conditions: trans.EvidenceSource || 'PubChem Transformations Index',
+                  source: 'PubChem Transformation Registry',
+                  link: `https://pubchem.ncbi.nlm.nih.gov/compound/${linkedCid}`
+                };
+
+                if (isUpstream) {
+                  previousRoutes.push(routeItem);
+                } else {
+                  nextRoutes.push(routeItem);
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Error fetching target CID titles:', e);
+        }
+      }
+    }
+
+    // Parse 2: PUG View Synthesis Section
+    if (synthRes.status === 'fulfilled' && synthRes.value.ok) {
+      const synthData = await synthRes.value.json();
       const sections = synthData.Record?.Section || [];
 
-      // Recursive function to extract synthesis text paragraphs & patent/paper citations
       const extractSynthesisData = (secList: any[]) => {
         secList.forEach((sec: any) => {
           if (sec.TOCHeading === 'Synthesis' || sec.TOCHeading === 'Methods of Manufacturing') {
@@ -55,46 +114,39 @@ const fetchDynamicTransformations = async (cid: string, compoundName: string, ca
               }
             });
           }
-          if (sec.Section) {
-            extractSynthesisData(sec.Section);
-          }
+          if (sec.Section) extractSynthesisData(sec.Section);
         });
       };
 
       extractSynthesisData(sections);
+
+      synthesisNotes.forEach((note, index) => {
+        previousRoutes.push({
+          name: `Published Synthesis Route #${index + 1}`,
+          cas: `Literature Process`,
+          cid: 'N/A',
+          reaction: note.text.length > 180 ? `${note.text.substring(0, 180)}...` : note.text,
+          conditions: 'Extract from PubChem Synthesis Section',
+          source: note.source,
+          link: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}#section=Synthesis`
+        });
+      });
     }
 
-    // Parse extracted synthesis text into structured Precursor cards
-    synthesisNotes.forEach((note, index) => {
-      previousRoutes.push({
-        name: `Published Synthesis Route #${index + 1}`,
-        cas: `Literature Process`,
-        cid: 'N/A',
-        reaction: note.text.length > 180 ? `${note.text.substring(0, 180)}...` : note.text,
-        conditions: 'Extract from PubChem Synthesis Section',
-        source: note.source,
-        link: `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}#section=Synthesis`
-      });
-    });
-
-    // 2. Query Parent Compound CIDs to build dynamic Structural / Salt form links
-    const parentRes = await fetch(
-      `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/cids/JSON?cids_type=parent`
-    );
-
-    if (parentRes.ok) {
-      const parentData = await parentRes.json();
+    // Parse 3: Parent CIDs
+    if (parentRes.status === 'fulfilled' && parentRes.value.ok) {
+      const parentData = await parentRes.value.json();
       const parentCids: number[] = parentData.IdentifierList?.CID || [];
 
       parentCids.forEach((parentCid) => {
         const parentCidStr = parentCid.toString();
         if (parentCidStr !== cid) {
           previousRoutes.push({
-            name: `Parent Active Core / Free Acid (CID: ${parentCidStr})`,
+            name: `Parent Active Core / Free Base (CID: ${parentCidStr})`,
             cas: `CID: ${parentCidStr}`,
             cid: parentCidStr,
-            reaction: 'Parent Acid / Salt Complex Dissociation',
-            conditions: 'PubChem Structural Hierarchy',
+            reaction: 'Parent Core Structural Association',
+            conditions: 'PubChem Hierarchy',
             source: 'PubChem Classification',
             link: `https://pubchem.ncbi.nlm.nih.gov/compound/${parentCidStr}`
           });
@@ -102,7 +154,7 @@ const fetchDynamicTransformations = async (cid: string, compoundName: string, ca
       });
     }
 
-    // 3. De-duplicate routes
+    // De-duplicate items
     const uniquePrevious = Array.from(new Map(previousRoutes.map(item => [item.name + item.cid, item])).values());
     const uniqueNext = Array.from(new Map(nextRoutes.map(item => [item.name + item.cid, item])).values());
 
@@ -267,7 +319,7 @@ export default function App() {
 
     } catch (err) {
       setError(`Failed to fetch chemical details for "${cleanQuery}".`);
-    } finally {
+    } fontinally {
       setLoading(false);
     }
   }, []);
@@ -308,7 +360,7 @@ export default function App() {
               <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
                 ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">Live API</span>
               </h1>
-              <p className="text-xs text-slate-400 hidden sm:block">PubChem PUG View + NIH CIR Synthesis Engine</p>
+              <p className="text-xs text-slate-400 hidden sm:block">PubChem Transformations + PUG View Synthesis Engine</p>
             </div>
           </div>
 
@@ -338,7 +390,7 @@ export default function App() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Enter CAS Registry No., CID, or Chemical Name (e.g. 147098-20-2)..."
+                placeholder="Enter CAS Registry No., CID, or Chemical Name (e.g. Toluene, 108-88-3, or 147098-20-2)..."
                 className={`w-full pl-12 pr-32 py-4 rounded-2xl text-sm font-medium border transition-all duration-200 shadow-xl focus:outline-none focus:ring-2 ${
                   themeMode === 'dark'
                     ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:ring-indigo-500'
