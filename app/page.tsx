@@ -3,7 +3,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
   FlaskConical, 
-  ArrowRight, 
   ArrowDown, 
   Layers, 
   Copy, 
@@ -13,13 +12,12 @@ import {
   ChevronDown, 
   ChevronUp, 
   Atom, 
-  ShieldCheck, 
   Zap,
   ExternalLink,
   Globe
 } from 'lucide-react';
 
-// Vendor & Extended Chemical Database
+// Vendor & Extended Chemical Database (Local Overrides)
 const EXTENDED_CATALOG: Record<string, any> = {
   '2968441-46-3': {
     cid: 'N/A',
@@ -108,6 +106,70 @@ const EXTENDED_CATALOG: Record<string, any> = {
     next: [
       { name: 'Sodium Salicylate', cas: '54-21-7', cid: '5900', reaction: 'Base Hydrolysis', conditions: 'NaOH (aq), Ambient temp', source: 'Pharm. Res. 1991, 8, 452', doi: '10.1023/A:1015865223011' }
     ]
+  }
+};
+
+/**
+ * Dynamically queries PubChem for reaction transformations linked to a CID
+ * Returns mapped upstream precursors and downstream derivatives
+ */
+const fetchDynamicTransformations = async (cid: string) => {
+  if (!cid || cid === 'N/A') return { previous: [], next: [] };
+
+  try {
+    const response = await fetch(
+      `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/transformations/JSON`
+    );
+
+    if (!response.ok) {
+      return { previous: [], next: [] };
+    }
+
+    const data = await response.json();
+    const rows = data.Transformations?.Row || [];
+
+    const previousRoutes: any[] = [];
+    const nextRoutes: any[] = [];
+
+    rows.forEach((row: any) => {
+      const reactantCid = row.ReactantCID?.toString();
+      const productCid = row.ProductCID?.toString();
+      const reactionName = row.TransformationName || 'Chemical Transformation';
+
+      // Current CID is Product -> Reactant is an Upstream Precursor
+      if (productCid === cid && reactantCid) {
+        previousRoutes.push({
+          name: `Precursor (CID: ${reactantCid})`,
+          cas: `CID: ${reactantCid}`,
+          cid: reactantCid,
+          reaction: reactionName,
+          conditions: 'PubChem Transformations Registry',
+          source: 'PubChem Index',
+          doi: ''
+        });
+      }
+
+      // Current CID is Reactant -> Product is a Downstream Derivative
+      if (reactantCid === cid && productCid) {
+        nextRoutes.push({
+          name: `Derivative (CID: ${productCid})`,
+          cas: `CID: ${productCid}`,
+          cid: productCid,
+          reaction: reactionName,
+          conditions: 'PubChem Transformations Registry',
+          source: 'PubChem Index',
+          doi: ''
+        });
+      }
+    });
+
+    return {
+      previous: previousRoutes.slice(0, 6),
+      next: nextRoutes.slice(0, 6)
+    };
+  } catch (err) {
+    console.warn('Dynamic transformation lookup failed:', err);
+    return { previous: [], next: [] };
   }
 };
 
@@ -210,7 +272,6 @@ export default function App() {
       console.warn("Web search fallback error:", err);
     }
 
-    // Direct Web Entity Fallback if API is unreachable
     return {
       cid: 'N/A',
       name: `Chemical Record (${cleanQuery})`,
@@ -264,8 +325,21 @@ export default function App() {
           const synonymsList = synData.InformationList?.Information[0]?.Synonym || [];
 
           const extractedCas = synonymsList.find((s: string) => /^\d{2,7}-\d{2}-\d$/.test(s)) || (isCasNumber(cleanQuery) ? cleanQuery : 'Available via PubChem');
+          
           const matchedPreset = EXTENDED_CATALOG[extractedCas] || (catalogKey ? EXTENDED_CATALOG[catalogKey] : null);
 
+          // 1. Start with local catalog data if available
+          let previousRoutes = matchedPreset?.previous || null;
+          let nextRoutes = matchedPreset?.next || null;
+
+          // 2. If not found in catalog, fetch dynamically from PubChem API
+          if (!previousRoutes || !nextRoutes) {
+            const dynamicData = await fetchDynamicTransformations(cid.toString());
+            previousRoutes = previousRoutes || dynamicData.previous;
+            nextRoutes = nextRoutes || dynamicData.next;
+          }
+
+          // 3. Set chemical state with fallback to empty arrays (never hardcoded mock compounds)
           setChemicalData({
             cid: cid.toString(),
             name: props.Title || cleanQuery,
@@ -275,9 +349,10 @@ export default function App() {
             smiles: props.CanonicalSMILES || 'N/A',
             iupac: props.IUPACName || props.Title || 'N/A',
             synonyms: synonymsList.slice(0, 25),
-            previous: matchedPreset?.previous || [],
-            next: matchedPreset?.next || []
+            previous: previousRoutes || [],
+            next: nextRoutes || []
           });
+
           setResolverSource('pubchem');
           setLoading(false);
           return;
@@ -340,10 +415,12 @@ export default function App() {
     }
   };
 
+  // Ensure navigateToChemical supports searching by CID, CAS, or Name
   const navigateToChemical = (targetTerm: string) => {
     if (targetTerm && targetTerm !== 'N/A') {
-      setSearchQuery(targetTerm);
-      setActiveQuery(targetTerm);
+      const cleanTerm = targetTerm.replace(/^CID:\s*/i, '');
+      setSearchQuery(cleanTerm);
+      setActiveQuery(cleanTerm);
     }
   };
 
@@ -358,9 +435,9 @@ export default function App() {
             </div>
             <div>
               <h1 className="font-bold text-lg tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.4 Web-Enabled</span>
+                ChemExplorer <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 ml-2">v2.5 Dynamic Pathways</span>
               </h1>
-              <p className="text-xs text-slate-400 hidden sm:block">PubChem + NIH CIR + Vendor Catalog + Live Web Engine Search</p>
+              <p className="text-xs text-slate-400 hidden sm:block">PubChem Transformations + NIH CIR + Vendor Catalog + Web Search</p>
             </div>
           </div>
 
@@ -393,7 +470,7 @@ export default function App() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Enter CAS Registry No. or Chemical Name..."
+                placeholder="Enter CAS Registry No., CID, or Chemical Name..."
                 className={`w-full pl-12 pr-32 py-4 rounded-2xl text-sm font-medium border transition-all duration-200 shadow-xl focus:outline-none focus:ring-2 ${
                   themeMode === 'dark'
                     ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:ring-indigo-500'
@@ -414,9 +491,9 @@ export default function App() {
               <div className="flex items-center space-x-2 overflow-x-auto py-1">
                 <span className="font-semibold text-slate-500 flex items-center"><Zap className="w-3.5 h-3.5 mr-1 text-amber-400" /> Samples:</span>
                 {[
-                  { name: 'New CAS (2968441-46-3)', cas: '2968441-46-3' },
-                  { name: 'Acetic Acid', cas: '64-19-7' },
-                  { name: 'Aspirin', cas: '50-78-2' }
+                  { name: 'Custom CAS (2968441-46-3)', cas: '2968441-46-3' },
+                  { name: 'Acetic Acid (64-19-7)', cas: '64-19-7' },
+                  { name: 'Aspirin (50-78-2)', cas: '50-78-2' }
                 ].map((item) => (
                   <button
                     key={item.cas}
@@ -446,15 +523,15 @@ export default function App() {
           </div>
         )}
 
-        {/* Default Landing View (When no query has been made yet) */}
+        {/* Default Landing View */}
         {!activeQuery && !loading && (
           <div className="py-20 text-center space-y-4 max-w-xl mx-auto">
             <div className="inline-block p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
               <FlaskConical className="w-10 h-10" />
             </div>
-            <h2 className="text-xl font-bold">Search any CAS Registry Number</h2>
+            <h2 className="text-xl font-bold">Dynamic Reaction Pathway Exploration</h2>
             <p className="text-xs text-slate-400">
-              Searches live PubChem APIs, NIH CIR, local building block indexes, and fallback live web search engines.
+              Queries live PubChem Transformations endpoints dynamically to derive upstream precursors and downstream products for any CAS number or CID.
             </p>
           </div>
         )}
@@ -465,7 +542,7 @@ export default function App() {
             <div className="inline-block p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 animate-pulse">
               <FlaskConical className="w-12 h-12 animate-bounce" />
             </div>
-            <p className="text-slate-400 text-sm font-medium">Querying Multi-Tier Resolver (PubChem + NIH CIR + Catalog + Web Search Engine)...</p>
+            <p className="text-slate-400 text-sm font-medium">Retrieving Compound Details & Dynamic Reaction Networks...</p>
           </div>
         ) : chemicalData ? (
           <>
@@ -584,10 +661,8 @@ export default function App() {
                     </div>
 
                     <div className={`p-4 rounded-2xl border ${themeMode === 'dark' ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">SMILES Notation</div>
-                      <div className="text-xs font-mono text-slate-300 truncate" title={chemicalData.smiles}>
-                        {chemicalData.smiles}
-                      </div>
+                      <div className="text-xs text-slate-400 uppercase font-semibold mb-1">PubChem CID</div>
+                      <div className="text-lg font-mono font-bold text-purple-400">{chemicalData.cid}</div>
                     </div>
                   </div>
 
@@ -643,16 +718,16 @@ export default function App() {
               </div>
             </section>
 
-            {/* Reaction Pathway Map Component (Previous & Next Stages) */}
+            {/* Dynamic Reaction Pathway Section */}
             <section className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
                 <div>
                   <h3 className="text-xl font-bold tracking-tight text-slate-100 flex items-center space-x-2">
                     <Layers className="w-5 h-5 text-indigo-400" />
-                    <span>Synthesis & Reaction Pathway Explorer</span>
+                    <span>Dynamic Synthesis & Reaction Network</span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Click any upstream precursor or downstream derivative to jump to its chemical profile.
+                    Click any upstream precursor or downstream derivative card to load its full profile.
                   </p>
                 </div>
               </div>
@@ -673,7 +748,7 @@ export default function App() {
                       chemicalData.previous.map((item: any, index: number) => (
                         <div
                           key={index}
-                          onClick={() => navigateToChemical(item.cas !== 'N/A' ? item.cas : item.name)}
+                          onClick={() => navigateToChemical(item.cid && item.cid !== 'N/A' ? item.cid : (item.cas !== 'N/A' ? item.cas : item.name))}
                           className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer group hover:scale-[1.01] hover:shadow-xl relative ${
                             themeMode === 'dark'
                               ? 'bg-slate-900 border-slate-800 hover:border-amber-500/50'
@@ -688,7 +763,7 @@ export default function App() {
                               <h4 className="text-base font-bold text-slate-100 mt-2 group-hover:text-indigo-400 transition">
                                 {item.name}
                               </h4>
-                              <p className="text-xs font-mono text-slate-400">CAS: {item.cas}</p>
+                              <p className="text-xs font-mono text-slate-400">{item.cas}</p>
                             </div>
                           </div>
 
@@ -717,7 +792,7 @@ export default function App() {
                 }`}>
                   <div className="flex items-center justify-between mb-4">
                     <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold uppercase tracking-wider">
-                      Current Target Stage
+                      Current Target Compound
                     </span>
                     <span className="text-xs font-mono text-slate-400">CAS: {chemicalData.cas}</span>
                   </div>
@@ -744,7 +819,7 @@ export default function App() {
                       chemicalData.next.map((item: any, index: number) => (
                         <div
                           key={index}
-                          onClick={() => navigateToChemical(item.cas !== 'N/A' ? item.cas : item.name)}
+                          onClick={() => navigateToChemical(item.cid && item.cid !== 'N/A' ? item.cid : (item.cas !== 'N/A' ? item.cas : item.name))}
                           className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer group hover:scale-[1.01] hover:shadow-xl relative ${
                             themeMode === 'dark'
                               ? 'bg-slate-900 border-slate-800 hover:border-emerald-500/50'
@@ -759,7 +834,7 @@ export default function App() {
                               <h4 className="text-base font-bold text-slate-100 mt-2 group-hover:text-indigo-400 transition">
                                 {item.name}
                               </h4>
-                              <p className="text-xs font-mono text-slate-400">CAS: {item.cas}</p>
+                              <p className="text-xs font-mono text-slate-400">{item.cas}</p>
                             </div>
                           </div>
 
