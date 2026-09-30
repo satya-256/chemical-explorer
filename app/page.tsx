@@ -319,7 +319,7 @@ export default function App() {
 
     } catch (err) {
       setError(`Failed to fetch chemical details for "${cleanQuery}".`);
-    } fontinally {
+    } finally {
       setLoading(false);
     }
   }, []);
